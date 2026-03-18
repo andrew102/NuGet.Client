@@ -12,6 +12,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Microsoft;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Threading;
@@ -240,11 +241,16 @@ namespace NuGet.PackageManagement.VisualStudio
             if (range == null) throw new ArgumentNullException(nameof(range));
             if (context == null) throw new ArgumentNullException(nameof(context));
 
+            bool isCpvmEnabled = MSBuildStringUtility.IsTrue(_vsProjectAdapter.BuildProperties.GetPropertyValue(ProjectBuildProperties.ManagePackageVersionsCentrally));
+            string directoryPackagesPropsPath = isCpvmEnabled
+                ? _vsProjectAdapter.BuildProperties.GetPropertyValue("DirectoryPackagesPropsPath")
+                : null;
+
             var dependency = new LibraryDependency()
             {
                 LibraryRange = new LibraryRange(
                     name: packageId,
-                    versionRange: range,
+                    versionRange: isCpvmEnabled ? null : range,
                     typeConstraint: LibraryDependencyTarget.Package),
                 SuppressParent = context.SuppressParent,
                 IncludeType = context.IncludeType
@@ -252,7 +258,42 @@ namespace NuGet.PackageManagement.VisualStudio
 
             await ProjectServices.References.AddOrUpdatePackageReferenceAsync(dependency, token);
 
+            if (isCpvmEnabled && !string.IsNullOrEmpty(directoryPackagesPropsPath))
+            {
+                UpdateDirectoryPackagesProps(directoryPackagesPropsPath, packageId, range);
+            }
+
             return true;
+        }
+
+        private static void UpdateDirectoryPackagesProps(string directoryPackagesPropsPath, string packageId, VersionRange range)
+        {
+            var doc = XDocument.Load(directoryPackagesPropsPath);
+            var ns = doc.Root?.Name.Namespace ?? XNamespace.None;
+
+            var existingItem = doc.Descendants(ns + "PackageVersion")
+                .FirstOrDefault(e => string.Equals(e.Attribute("Include")?.Value, packageId, StringComparison.OrdinalIgnoreCase));
+
+            string versionString = range.OriginalString ?? range.MinVersion?.ToNormalizedString() ?? range.ToShortString();
+
+            if (existingItem != null)
+            {
+                existingItem.SetAttributeValue("Version", versionString);
+            }
+            else
+            {
+                var itemGroup = doc.Root?.Elements(ns + "ItemGroup").LastOrDefault();
+                if (itemGroup == null)
+                {
+                    itemGroup = new XElement(ns + "ItemGroup");
+                    doc.Root?.Add(itemGroup);
+                }
+                itemGroup.Add(new XElement(ns + "PackageVersion",
+                    new XAttribute("Include", packageId),
+                    new XAttribute("Version", versionString)));
+            }
+
+            doc.Save(directoryPackagesPropsPath);
         }
 
         public override async Task AddFileToProjectAsync(string filePath)
