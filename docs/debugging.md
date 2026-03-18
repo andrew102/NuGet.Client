@@ -66,6 +66,22 @@ The build generates a vsix artifact in the `artifacts/VS15/` folder. From the [D
 
 Given that NuGet is a system component, you cannot use the extensions manager in Visual Studio to downgrade your NuGet extension to its original version. Go back to your [Developer Command Prompt for VS](https://docs.microsoft.com/en-us/dotnet/framework/tools/developer-command-prompt-for-vs) and run `VSIXInstaller.exe /d:NuGet.72c5d240-f742-48d4-a0f1-7016671e405b`.
 
+For a fully automated revert that also clears the MEF cache and handles edge cases, use the included helper script from an elevated PowerShell prompt:
+
+```powershell
+# Must be run as Administrator
+scripts\Restore-NuGetExtension.ps1
+```
+
+If you used the recommended F5 / experimental-instance approach, your main VS was never modified.
+Reset only the experimental instance with:
+
+```powershell
+scripts\Restore-NuGetExtension.ps1 -ResetExperimental
+```
+
+If all else fails, run a **Repair** from the Visual Studio Installer — this restores all system components including NuGet.
+
 #### NuGet in Visual Studio assembly location
 
 Each Visual Studio instance has its own root install directory. Relative to the root directory, the NuGet assemblies can be found in `Common7/IDE/CommonExtensions/Microsoft/NuGet`.

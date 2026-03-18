@@ -164,6 +164,71 @@ Open `CpmTest.sln` in the experimental instance of Visual Studio launched in Ste
 
 ---
 
+## Step 7 — Safely reverting the extension
+
+### Option A — Experimental instance (no action required)
+
+If you used the **F5** approach (Option A in Step 4), your main Visual Studio installation was **never modified**.
+The custom NuGet was deployed only to the isolated experimental instance.
+
+To clean up:
+
+```powershell
+# Reset the experimental instance directory — it will be recreated fresh on next F5
+scripts\Restore-NuGetExtension.ps1 -ResetExperimental
+```
+
+The script lists every experimental-instance folder it finds under
+`%LOCALAPPDATA%\Microsoft\VisualStudio\` and asks for confirmation before deleting each one.
+
+### Option B — Main Visual Studio installation
+
+Because NuGet is a **system component**, the Extensions Manager UI in Visual Studio cannot revert it.
+You must use the `VSIXInstaller.exe` command-line tool.
+
+#### Quick manual method
+
+Open the **Developer Command Prompt for VS 2022** (as **Administrator**) and run:
+
+```cmd
+VSIXInstaller.exe /d:NuGet.72c5d240-f742-48d4-a0f1-7016671e405b
+```
+
+Visual Studio will then fall back to its own built-in NuGet version.
+
+> **Tip:** You can find `VSIXInstaller.exe` inside your VS installation, typically at:
+> `C:\Program Files\Microsoft Visual Studio\2022\<Edition>\Common7\IDE\VSIXInstaller.exe`
+
+#### Automated method (recommended)
+
+Run the included helper script from an **elevated** PowerShell prompt:
+
+```powershell
+# Must be run as Administrator
+scripts\Restore-NuGetExtension.ps1
+```
+
+The script:
+1. Locates your VS 2022 installation automatically via `vswhere.exe`.
+2. Closes any running VS processes for that instance.
+3. Runs `VSIXInstaller.exe /d` to remove the custom NuGet extension, retrying up to 3 times and recovering from interrupted-install errors automatically.
+4. Clears the MEF component cache (so VS picks up the restored version cleanly on next launch).
+5. Runs `/updateConfiguration` to finish the revert.
+
+After the script completes, start Visual Studio normally — it will use its built-in NuGet.
+
+#### Last-resort fallback: VS Repair
+
+If the automated method fails (or if VS behaves oddly after the revert), run a repair from the VS Installer:
+
+1. Open the **Visual Studio Installer**.
+2. Find your VS 2022 instance.
+3. Click the **More** dropdown → **Repair**.
+
+This restores all system components, including NuGet, to the state they were in when VS was last updated.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Cause / Fix |
@@ -172,6 +237,8 @@ Open `CpmTest.sln` in the experimental instance of Visual Studio launched in Ste
 | `Directory.Packages.props` not updated | Verify that `<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>` is present in that file. |
 | Build fails with "reference assemblies not found" | You need the **.NET Framework 4.7.2 targeting pack**. Install it via the VS Installer. |
 | `configure.ps1` fails | Make sure you have all workloads listed in `.vsconfig`. Re-run the VS Installer. |
+| Cannot revert via Extensions Manager | NuGet is a system component. Use `scripts\Restore-NuGetExtension.ps1` (elevated prompt) or run a VS Repair. |
+| VS behaves oddly after revert | Clear the MEF cache manually: `%LOCALAPPDATA%\Microsoft\VisualStudio\17.0_<id>\ComponentModelCache` — or run `scripts\Restore-NuGetExtension.ps1` which does this automatically. |
 
 ---
 
