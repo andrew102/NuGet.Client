@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using FluentAssertions;
 using Microsoft.VisualStudio.ComponentModelHost;
 using Microsoft.VisualStudio.ProjectSystem;
@@ -664,6 +665,126 @@ namespace NuGet.PackageManagement.VisualStudio.Test
                     .Verify(
                         x => x.AddOrUpdatePackageReferenceAsync(It.IsAny<LibraryDependency>(), CancellationToken.None),
                         Times.Once);
+            }
+        }
+
+        [Fact]
+        public async Task InstallPackageAsync_WithCPMEnabled_AddsPackageReferenceWithoutVersion()
+        {
+            // Arrange
+            using (var randomTestFolder = TestDirectory.Create())
+            {
+                var projectBuildProperties = new Mock<IVsProjectBuildProperties>();
+                projectBuildProperties
+                    .Setup(x => x.GetPropertyValue(ProjectBuildProperties.ManagePackageVersionsCentrally))
+                    .Returns("true");
+                projectBuildProperties
+                    .Setup(x => x.GetPropertyValue("DirectoryPackagesPropsPath"))
+                    .Returns(string.Empty);
+
+                var projectAdapter = CreateProjectAdapter(randomTestFolder, projectBuildProperties);
+
+                var projectServices = new TestProjectSystemServices();
+
+                LibraryDependency? actualDependency = null;
+                Mock.Get(projectServices.References)
+                    .Setup(x => x.AddOrUpdatePackageReferenceAsync(
+                        It.IsAny<LibraryDependency>(), CancellationToken.None))
+                    .Callback<LibraryDependency, CancellationToken>((d, _) => actualDependency = d)
+                    .Returns(Task.CompletedTask);
+
+                var testProject = new LegacyPackageReferenceProject(
+                    projectAdapter,
+                    Guid.NewGuid().ToString(),
+                    projectServices,
+                    _threadingService);
+
+                var buildIntegratedInstallationContext = new BuildIntegratedInstallationContext()
+                {
+                    SuccessfulFrameworks = [],
+                    UnsuccessfulFrameworks = [],
+                    AreAllPackagesConditional = false
+                };
+
+                // Act
+                var result = await testProject.InstallPackageAsync(
+                    "packageA",
+                    VersionRange.Parse("1.0.0"),
+                    null,
+                    buildIntegratedInstallationContext,
+                    CancellationToken.None);
+
+                // Assert
+                Assert.True(result);
+
+                Assert.NotNull(actualDependency);
+                Assert.Equal("packageA", actualDependency.LibraryRange.Name);
+                Assert.Null(actualDependency.LibraryRange.VersionRange);
+
+                // Verify
+                Mock.Get(projectServices.References)
+                    .Verify(
+                        x => x.AddOrUpdatePackageReferenceAsync(It.IsAny<LibraryDependency>(), CancellationToken.None),
+                        Times.Once);
+            }
+        }
+
+        [Fact]
+        public async Task InstallPackageAsync_WithCPMEnabled_UpdatesDirectoryPackagesProps()
+        {
+            // Arrange
+            using (var randomTestFolder = TestDirectory.Create())
+            {
+                // Create a temporary Directory.Packages.props file
+                var propsFilePath = Path.Combine(randomTestFolder, "Directory.Packages.props");
+                File.WriteAllText(propsFilePath,
+                    "<Project>\n  <PropertyGroup>\n    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>\n  </PropertyGroup>\n</Project>");
+
+                var projectBuildProperties = new Mock<IVsProjectBuildProperties>();
+                projectBuildProperties
+                    .Setup(x => x.GetPropertyValue(ProjectBuildProperties.ManagePackageVersionsCentrally))
+                    .Returns("true");
+                projectBuildProperties
+                    .Setup(x => x.GetPropertyValue("DirectoryPackagesPropsPath"))
+                    .Returns(propsFilePath);
+
+                var projectAdapter = CreateProjectAdapter(randomTestFolder, projectBuildProperties);
+
+                var projectServices = new TestProjectSystemServices();
+                Mock.Get(projectServices.References)
+                    .Setup(x => x.AddOrUpdatePackageReferenceAsync(
+                        It.IsAny<LibraryDependency>(), CancellationToken.None))
+                    .Returns(Task.CompletedTask);
+
+                var testProject = new LegacyPackageReferenceProject(
+                    projectAdapter,
+                    Guid.NewGuid().ToString(),
+                    projectServices,
+                    _threadingService);
+
+                var buildIntegratedInstallationContext = new BuildIntegratedInstallationContext()
+                {
+                    SuccessfulFrameworks = [],
+                    UnsuccessfulFrameworks = [],
+                    AreAllPackagesConditional = false
+                };
+
+                // Act
+                var result = await testProject.InstallPackageAsync(
+                    "packageA",
+                    VersionRange.Parse("1.2.3"),
+                    null,
+                    buildIntegratedInstallationContext,
+                    CancellationToken.None);
+
+                // Assert
+                Assert.True(result);
+
+                var updatedDoc = XDocument.Load(propsFilePath);
+                var packageVersionElement = updatedDoc.Descendants("PackageVersion")
+                    .FirstOrDefault(e => string.Equals(e.Attribute("Include")?.Value, "packageA", StringComparison.OrdinalIgnoreCase));
+                Assert.NotNull(packageVersionElement);
+                Assert.Equal("1.2.3", packageVersionElement.Attribute("Version")?.Value);
             }
         }
 

@@ -317,9 +317,14 @@ namespace NuGet.PackageManagement.VisualStudio
             // - specify a metadata element name with a value => add/replace that metadata item on the package reference
             // - specify a metadata element name with no value => remove that metadata item from the project reference
             // - don't specify a particular metadata name => if it exists on the package reference, don't change it (e.g. for user defined metadata)
+            // When CPM is enabled, packageVersion may be null — pass empty string so no Version is written to .csproj
+            string versionString = packageVersion != null
+                ? (packageVersion.OriginalString ?? packageVersion.ToShortString())
+                : string.Empty;
+
             _vsProject4.PackageReferences.AddOrUpdate(
                 packageName,
-                packageVersion.OriginalString ?? packageVersion.ToShortString(),
+                versionString,
                 metadataElements,
                 metadataValues);
         }
