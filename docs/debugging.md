@@ -70,6 +70,14 @@ Given that NuGet is a system component, you cannot use the extensions manager in
 
 Each Visual Studio instance has its own root install directory. Relative to the root directory, the NuGet assemblies can be found in `Common7/IDE/CommonExtensions/Microsoft/NuGet`.
 
+### Testing a specific feature: CPM support for legacy projects
+
+If you are testing the Central Package Management (CPM) fix for legacy (non-SDK-style) `.csproj` projects, see the dedicated guide:
+
+[Testing CPM support for legacy projects](testing-cpm-legacy-support.md)
+
+That guide includes a PowerShell helper script (`scripts/Create-CpmLegacyTestSolution.ps1`) that creates a ready-to-use test solution with CPM enabled in one command.
+
 ### Code pointers for NuGet in Visual Studio
 
 Visual Studio extensibility has the concept of VSPackages. This allows extensions to add capabilities to the UI and all of the flows within the IDE. The NuGet client itself ships 2 packages, which can be considered the entry points for the whole component. You wouldn’t normally debug the initialization of these packages of course, but they author the whole NuGet in VS experience in one or another.
